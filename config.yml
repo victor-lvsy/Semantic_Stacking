@@ -1,0 +1,11 @@
+image:
+  height: 520
+  width: 520
+
+training:
+  Learning_Rate: 1.0e-5
+  batchSize: 3
+
+data:
+  dataset: 
+  path: LytroDataset
