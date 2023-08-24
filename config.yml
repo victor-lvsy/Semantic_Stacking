@@ -5,7 +5,17 @@ image:
 training:
   Learning_Rate: 1.0e-5
   batchSize: 3
+  load_pretrained: False
+  pretrained_file: torch_save/10000.torch
+  training_loop_length: 10001
 
 data:
-  dataset: 
+  dataset: LytroDataset
   path: LytroDataset
+
+save:
+  torch_files_rate: 1000
+  img_rate: 100
+  img_folder: img_save
+  csv_rate: 1
+  csv_file: learning_rate.csv
