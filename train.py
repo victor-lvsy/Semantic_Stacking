@@ -7,6 +7,7 @@ import torch
 import torchvision.transforms as tf
 import random
 import model
+from normalize import normalize_training_data as normalize
 
 with open("config.yml") as fp:
     cfg = yaml.safe_load(fp)
@@ -25,9 +26,10 @@ ListImages=os.listdir(os.path.join(TrainFolder, "lytro-img/A")) # Create list of
 
 save_array = []
 #----------------------------------------------Transform image-------------------------------------------------------------------
-transformImg=tf.Compose([tf.ToPILImage(),tf.Resize((height,width)),tf.ToTensor(),tf.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
+mean, std = normalize(cfg)
+print(mean, std)
+transformImg=tf.Compose([tf.ToPILImage(),tf.Resize((height,width)),tf.ToTensor(),tf.Normalize(mean, std)])
 transformAnn=tf.Compose([tf.ToPILImage(),tf.Resize((height,width),tf.InterpolationMode.NEAREST),tf.ToTensor()])
-conv_prelayer=torch.nn.Conv2d(6, 3, 3, 1, 1)
 #---------------------Read image ---------------------------------------------------------
 def ReadRandomImage(): # First lets load random image and  the corresponding annotation
     idx=np.random.randint(0,len(ListImages)) # Select random image

@@ -6,14 +6,16 @@ import torch
 import torchvision.transforms as tf
 import yaml
 import model
+from normalize import normalize_pair as normalize
 
 with open("config.yml") as fp:
     cfg = yaml.safe_load(fp)
 
-modelPath = "3000.torch"  # Path to trained model
+modelPath = "9000.torch"  # Path to trained model
 ImgFolder = "test"  # Test image
-ImgN = 1
-conv_prelayer=torch.nn.Conv2d(6, 3, 3, 1, 1)
+ImgN = 0
+height=cfg["image"].get("height",450)
+width=cfg["image"].get("width",450)
 ListImages=os.listdir(os.path.join(ImgFolder,"A")) # Create list of images
 (height_orgin , widh_orgin ,d) = cv2.imread(os.path.join(ImgFolder,"A", ListImages[ImgN]).replace("._", ""))[:,:,0:3].shape # Get image original size 
 
@@ -21,17 +23,15 @@ def imageLoader():
     Img1=cv2.imread(os.path.join(ImgFolder,"A", ListImages[ImgN]).replace("._", ""))[:,:,0:3]
     Img2=cv2.imread(os.path.join(ImgFolder,"B", ListImages[ImgN]).replace("A", "B").replace("._", ""))[:,:,0:3]
     print(os.path.join(ImgFolder,"A", ListImages[ImgN]).replace("._", ""))
+    mean, std = normalize(Img1, Img2)
+    transformImg = tf.Compose([tf.ToPILImage(), tf.Resize((height, width)), tf.ToTensor(),tf.Normalize(mean, std)])
     Img1=transformImg(Img1)
     Img2=transformImg(Img2)
     Img3=torch.zeros([1,6, height, width])
     Img3[0,0:3,:,:]=Img1
     Img3[0,3:6,:,:]=Img2
-    # Img=conv_prelayer(Img3).squeeze()
     return Img3.squeeze()
 
-height=cfg["image"].get("height",450)
-width=cfg["image"].get("width",450)
-transformImg = tf.Compose([tf.ToPILImage(), tf.Resize((height, width)), tf.ToTensor(),tf.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))])  # tf.Resize((300,600)),tf.RandomRotation(145)])#
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')  # Check if there is GPU if not set trainning to CPU (very slow)
 Net = model.fcn() # Load net
