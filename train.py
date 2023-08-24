@@ -6,7 +6,7 @@ import torchvision.models.segmentation
 import torch
 import torchvision.transforms as tf
 import random
-import model.py
+import model
 
 with open("config.yml") as fp:
     cfg = yaml.safe_load(fp)
@@ -15,10 +15,15 @@ batchSize=cfg["training"].get("batchSize", 3)
 
 TrainFolder=cfg["data"].get("path")
 
+if cfg["training"].get("load_pretrained"):
+    modelPath = cfg["training"].get("pretrained_file")  # Path to trained model
+
 height = cfg["image"].get("height",450)
 width = cfg["image"].get("width",450)
 
 ListImages=os.listdir(os.path.join(TrainFolder, "lytro-img/A")) # Create list of images
+
+save_array = []
 #----------------------------------------------Transform image-------------------------------------------------------------------
 transformImg=tf.Compose([tf.ToPILImage(),tf.Resize((height,width)),tf.ToTensor(),tf.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
 transformAnn=tf.Compose([tf.ToPILImage(),tf.Resize((height,width),tf.InterpolationMode.NEAREST),tf.ToTensor()])
@@ -35,15 +40,15 @@ def ReadRandomImage(): # First lets load random image and  the corresponding ann
     if AnnMapBuf is not None:  AnnMap[AnnMapBuf <= 64] = 0
     Img1=transformImg(Img1)
     Img2=transformImg(Img2)
-    Img3=torch.zeros([2,3, height, width])
-    Img3[0,:,:,:]=Img1
-    Img3[1,:,:,:]=Img2
+    Img3=torch.zeros([1,6, height, width])
+    Img3[0,0:3,:,:]=Img1
+    Img3[0,3:6,:,:]=Img2
     # Img=conv_prelayer(Img3)
     AnnMap=transformAnn(AnnMap)
     return Img3,AnnMap
 #--------------Load batch of images-----------------------------------------------------
 def LoadBatch(): # Load batch of images
-    images = torch.zeros([batchSize,3,height,width])
+    images = torch.zeros([batchSize,6,height,width])
     ann = torch.zeros([batchSize, height, width])
     for i in range(batchSize):
         images[i],ann[i]=ReadRandomImage()
@@ -51,26 +56,36 @@ def LoadBatch(): # Load batch of images
 #--------------Load and set net and optimizer-------------------------------------
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 torch.cuda.empty_cache()
-Net = torchvision.models.segmentation.deeplabv3_resnet50(pretrained=True) # Load net
-Net.classifier[4] = torch.nn.Conv2d(256, 3, kernel_size=(1, 1), stride=(1, 1)) # Change final layer to 3 classes
+Net = model.fcn() # Load net
 Net=Net.to(device)
+if cfg["training"].get("load_pretrained"):
+    Net.load_state_dict(torch.load(modelPath)) # Load trained model
 optimizer=torch.optim.Adam(params=Net.parameters(),lr=cfg["training"].get("Learning_Rate", 1e-5)) # Create adam optimizer
 #----------------Train--------------------------------------------------------------------------
-for itr in range(10001): # Training loop
+for itr in range(cfg["training"].get("training_loop_length", 10001)): # Training loop
    images,ann=LoadBatch() # Load taining batch
    images=torch.autograd.Variable(images,requires_grad=False).to(device) # Load image
    ann = torch.autograd.Variable(ann, requires_grad=False).to(device) # Load annotation
-   Pred=Net(images)['out'] # make prediction
+   Pred=Net(images) # make prediction
    Net.zero_grad()
    criterion = torch.nn.CrossEntropyLoss() # Set loss function
    Loss=criterion(Pred,ann.long()) # Calculate cross entropy loss
    Loss.backward() # Backpropogate loss
    optimizer.step() # Apply gradient descent change to weight
-   seg = torch.argmax(Pred[0], 0).cpu().detach().numpy()  # Get  prediction classes
+
    print(itr,") Loss=",Loss.data.cpu().numpy())
-   if itr % 100 == 0:
+
+   if itr % cfg["save"].get("csv_rate", 1) == 0:
+    save_array.append(Loss.data.cpu().numpy())
+
+   if itr % cfg["save"].get("img_rate", 100) == 0:
         print("Saving image" +str(itr))
-        cv2.imwrite("img"+str(itr)+".jpg",(seg*127).astype(np.uint8))  # save image
-   if itr % 1000 == 0: #Save model weight once every 1k steps permenant file
+        seg = torch.argmax(Pred[0], 0).cpu().detach().numpy()  # Get  prediction classes
+        cv2.imwrite(os.path.join(cfg["save"].get("img_folder", "") ,"img"+str(itr)+".jpg"),(seg*127).astype(np.uint8))  # save image
+
+   if itr % cfg["save"].get("torch_files_rate", 1000) == 0: #Save model weight once every 1k steps permenant file
         print("Saving Model" +str(itr) + ".torch")
         torch.save(Net.state_dict(),   str(itr) + ".torch")
+
+f=open(cfg["save"].get("csv_file"),'a')    
+np.savetxt(f,save_array, fmt = '%f', delimiter=",") 
